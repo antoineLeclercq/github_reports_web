@@ -22,9 +22,11 @@ module GitHubAPI
   User = Struct.new(:name, :location, :public_repos)
   Event = Struct.new(:type, :repo_name)
   Repo = Struct.new(:name, :languages)
+  Gist = Struct.new(:id, :url, :description, :files, :public, :created_at)
+  Page = Struct.new(:items, :page, :total_pages)
+  GistFile = Struct.new(:name, :language, :content)
 
   class Client
-
     def initialize(token)
       @token = token
     end
@@ -134,6 +136,46 @@ module GitHubAPI
       url = "https://api.github.com/user/starred/#{full_repo_name}"
       response = connection.delete url
       raise RequestFailure, response.body['message'] unless response.status == 204
+    end
+
+    def gists(options)
+      page = page.present? ? page.to_i : 1
+      url = "https://api.github.com/gists?page=#{page}"
+
+      response = connection.get(url)
+
+      last_page_url = header_link(response.headers, "last")
+
+      if last_page_url
+        uri = URI.parse(last_page_url)
+        total_pages = Rack::Utils.parse_query(uri.query)["page"].to_i
+      else
+        total_pages = page
+      end
+
+      items = response.body.map do |gist_data|
+        Gist.new(gist_data["id"], gist_data["html_url"], gist_data["description"], [], gist_data["public"], gist_data["created_at"])
+      end
+
+      Page.new(items, page, total_pages)
+    end
+
+    def header_link(headers, link_name)
+      header = headers["link"]
+
+      if header
+        links = header.split(",").inject({}) do |sum, link|
+          url_part, rel_part = link.split(";")
+          url = url_part.tr("<>", "").strip
+          name = rel_part.match(/rel="(.*)"/)[1].strip
+          sum[name] = url
+          sum
+        end
+      else
+        links = {}
+      end
+
+      links[link_name]
     end
 
     def connection
