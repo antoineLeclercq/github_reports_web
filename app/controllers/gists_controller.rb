@@ -7,6 +7,13 @@ class GistsController < ApplicationController
     @gists = github_api_client.gists(page: params[:page])
   end
 
+  def show
+    @gist = github_api_client.gist_info(params[:id])
+  rescue GitHubAPI::NonexistentGist => e
+    flash.now[:danger] = e.message
+    render status: 404
+  end
+
   def new
     @gist_form = GistForm.new
   end
@@ -20,13 +27,28 @@ class GistsController < ApplicationController
         @gist_form.file_contents,
       )
       flash[:info] = "Your Gist has been created and can be viewed at this url: #{gist_info.url}"
-      redirect_to gists_path
+
+      clear_gists_cache
+
+      redirect_to gist_path(gist_info.id)
     else
       render :new
     end
   rescue GitHubAPI::RequestFailure => e
     flash[:danger] = e.message
     render :new
+  end
+
+  def destroy
+    github_api_client.delete_gist(params[:id])
+    flash[:info] = "The gist has been deleted."
+    
+    clear_gists_cache
+
+    redirect_to gists_path
+  rescue GitHubAPI::Error => e
+    flash[:danger] = "The gist could not be deleted: #{e.message}"
+    redirect_to gists_path
   end
 
   private
@@ -37,5 +59,12 @@ class GistsController < ApplicationController
 
   def gist_form_params
     params.require(:gist_form).permit(:description, :file_name, :file_contents)
+  end
+
+  def clear_gists_cache
+    redis = Redis.new
+    redis.keys('https://api.github.com/gists*').each do |key|
+      redis.del(key)
+    end
   end
 end

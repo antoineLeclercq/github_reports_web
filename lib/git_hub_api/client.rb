@@ -178,6 +178,29 @@ module GitHubAPI
       links[link_name]
     end
 
+    def gist_info(gist_id)
+      url = "https://api.github.com/gists/#{gist_id}"
+
+      response = connection.get(url)
+
+      gist_data = response.body
+
+      if response.status == 200
+        files = gist_data['files'].map do |file_name, file_info|
+          GistFile.new(file_name, file_info['language'], file_info['content'])
+        end
+        Gist.new(gist_data["id"], gist_data["html_url"], gist_data["description"], files, gist_data["public"], gist_data["created_at"])
+      else
+        raise NonexistentGist, "No gist found with id #{gist_id}."
+      end
+    end
+
+    def delete_gist(gist_id)
+      url = "https://api.github.com/gists/#{gist_id}"
+      response = connection.delete(url)
+      raise NonexistentGist, "No gist found with id #{gist_id}." unless response.status == 204
+    end
+
     def connection
       @connection ||= Faraday::Connection.new do |builder|
         builder.use Middleware::StatusCheck
