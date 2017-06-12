@@ -40,11 +40,9 @@ class GistsController < ApplicationController
   end
 
   def destroy
+    clear_gists_cache
     github_api_client.delete_gist(params[:id])
     flash[:info] = "The gist has been deleted."
-    
-    clear_gists_cache
-
     redirect_to gists_path
   rescue GitHubAPI::Error => e
     flash[:danger] = "The gist could not be deleted: #{e.message}"
@@ -62,9 +60,6 @@ class GistsController < ApplicationController
   end
 
   def clear_gists_cache
-    redis = Redis.new
-    redis.keys('https://api.github.com/gists*').each do |key|
-      redis.del(key)
-    end
+    Rails.cache.delete_matched '^https://api.github.com/gists'
   end
 end
